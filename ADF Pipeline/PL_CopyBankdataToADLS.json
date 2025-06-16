@@ -1,0 +1,192 @@
+{
+    "name": "PL_CopyBankdataToADLS",
+    "properties": {
+        "activities": [
+            {
+                "name": "Lookup_bankfiles",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "JsonSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": true,
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "JsonReadSettings"
+                        }
+                    },
+                    "dataset": {
+                        "referenceName": "Ds_BankParameters",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "ForEach1",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Lookup_bankfiles",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Lookup_bankfiles').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": true,
+                    "activities": [
+                        {
+                            "name": "Copy data",
+                            "type": "Copy",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "DelimitedTextSource",
+                                    "storeSettings": {
+                                        "type": "HttpReadSettings",
+                                        "requestMethod": "GET"
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextReadSettings"
+                                    }
+                                },
+                                "sink": {
+                                    "type": "DelimitedTextSink",
+                                    "storeSettings": {
+                                        "type": "AzureBlobFSWriteSettings"
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextWriteSettings",
+                                        "quoteAllText": true,
+                                        "fileExtension": ".txt"
+                                    }
+                                },
+                                "enableStaging": false,
+                                "logSettings": {
+                                    "enableCopyActivityLog": true,
+                                    "copyActivityLogSettings": {
+                                        "logLevel": "Info",
+                                        "enableReliableLogging": false
+                                    },
+                                    "logLocationSettings": {
+                                        "linkedServiceName": {
+                                            "referenceName": "ls_adls_bankdata",
+                                            "type": "LinkedServiceReference"
+                                        },
+                                        "path": "bankdata"
+                                    }
+                                },
+                                "translator": {
+                                    "type": "TabularTranslator",
+                                    "typeConversion": true,
+                                    "typeConversionSettings": {
+                                        "allowDataTruncation": true,
+                                        "treatBooleanAsNumber": false
+                                    }
+                                }
+                            },
+                            "inputs": [
+                                {
+                                    "referenceName": "Ds_Bankdata_http",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "p_rel_url": "@item().p_rel_url"
+                                    }
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "referenceName": "Ds_Bankdata_adls",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "p_sink_folder": "@item().p_sink_folder",
+                                        "p_sink_filename": {
+                                            "value": "@item().p_sink_file_name",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "NotifyOnFailure",
+                "type": "WebActivity",
+                "dependsOn": [
+                    {
+                        "activity": "ForEach1",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type": {
+                            "value": "application/x-www-form-urlencoded",
+                            "type": "Expression"
+                        }
+                    },
+                    "url": "https://api.twilio.com/2010-04-01/Accounts/********************************/Messages.json",
+                    "body": {
+                        "value": "@concat(\n  'To=whatsapp:', pipeline().parameters.WhatsappTo,\n  '&From=whatsapp:4155238886',\n  '&Body=',\n  uriComponent(\n    concat(\n      '⚠️ ADF Pipeline Failed: ',\n      pipeline().Pipeline,\n      '. Run ID: ',\n      pipeline().RunId,\n      '. Time: ',\n      utcNow()\n    )\n  )\n)\n",
+                        "type": "Expression"
+                    },
+                    "authentication": {
+                        "type": "Basic",
+                        "username": "**************************",
+                        "password": {
+                            "type": "SecureString",
+                            "value": "**********"
+                        }
+                    }
+                }
+            }
+        ],
+        "parameters": {
+            "WhatsappTo": {
+                "type": "string",
+                "defaultValue": "+91**********"
+            }
+        },
+        "annotations": [],
+        "lastPublishTime": "2025-06-14T07:03:20Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}
